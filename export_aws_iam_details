@@ -1,0 +1,40 @@
+#!/bin/bash
+
+set -e
+
+aws_service='iam'
+aws_request='get-account-authorization-details'
+aws_params=()
+aws_output=json
+
+now=$( date +%s )
+
+marker=''
+i=1
+
+while true ; do
+  out=${aws_service}.${aws_request}.${now}.${i}.${aws_output}
+  cmd=( aws "$aws_service" "$aws_request" )
+  cmd+=( "${aws_params[@]}" )
+  cmd+=( --output "$aws_output" )
+  if [ -n "$marker" ] ; then
+    cmd+=( --marker "$marker" )
+  fi
+  "${cmd[@]}" | jq -S '.' > "$out"
+  printf '%s\n' "$out"
+  is_truncated=$( jq -r '.IsTruncated' < "$out" )
+  case "$is_truncated" in
+    true)
+      marker=$( jq -r '.Marker' < "$out" )
+      let i++
+      continue
+      ;;
+    false)
+      break
+      ;;
+    *)
+      echo >&2 "ERROR: Unexpected IsTruncated value: $is_truncated"
+      exit 2
+      ;;
+  esac
+done
